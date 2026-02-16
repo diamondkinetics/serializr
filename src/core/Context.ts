@@ -62,7 +62,7 @@ export default class Context<T = any> {
                 }
             } else if (!this.hasError) {
                 fn(value!);
-                if (--this.pendingCallbacks === this.pendingRefsCount) {
+                if (--this.pendingCallbacks === 0) {
                     if (this.pendingRefsCount > 0) {
                         // all pending callbacks are pending reference resolvers. not good.
                         this.onReadyCb(

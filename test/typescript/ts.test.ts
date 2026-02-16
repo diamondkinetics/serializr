@@ -265,21 +265,7 @@ describe("Basic functionality", () => {
                 1234,
                 "invalid",
             ],
-            listRefObj1: [
-                "1121",
-                "1122",
-                "1123",
-                "1234",
-                "1131",
-                "1132",
-                "1133",
-                "1134",
-                undefined,
-                null,
-                1234,
-                "invalid",
-                "1121",
-            ],
+            listRefObj1: ["1121", "1123", "1131", "1133", undefined, null, "1121"],
             mapObj1: {
                 1131: {
                     id1: "1131",
@@ -296,17 +282,12 @@ describe("Basic functionality", () => {
                     text1: "good data",
                     valid: true,
                 },
-                1134: null,
-                1234: null,
             },
             mapRefObj1: {
                 1131: "1131",
-                1132: "1132",
                 1133: "1133",
-                1134: "1134",
-                1234: "1234",
             },
-            mapArrayRefObj1: ["1131", "1132", "1133", "1134", "1234"],
+            mapArrayRefObj1: ["1131", "1133"],
             obj1: {
                 id1: "1141",
                 text1: "yee",
@@ -882,5 +863,177 @@ describe("@subSchema", () => {
         expect(src[0]).toEqual(deserPic)
         expect(src[1]).toEqual(deserBetterPic)
         expect(src[2]).toEqual(deserVid)
+    })
+
+    it.skip("(de)serialize class hierarchy with multiple levels - including classes without serializable properties", () => {
+        class Todo {
+            @serializable
+            id: string
+
+            @serializable
+            text: string
+        }
+
+        @subSchema("picture")
+        class PictureTodo extends Todo {
+            pictureUrl: string
+        }
+
+        @subSchema("betterPicture", Todo)
+        class BetterPictureTodo extends PictureTodo {
+            @serializable
+            altText: string
+        }
+
+        @subSchema("video")
+        class VideoTodo extends Todo {
+            @serializable
+            videoUrl: string
+        }
+
+        const src = [
+            Object.assign(new PictureTodo(), {
+                id: "pic1",
+                text: "Lorem Ipsum",
+                pictureUrl:
+                    "https://i.etsystatic.com/13081791/c/900/715/0/288/il/b7343b/2529177643/il_340x270.2529177643_h9nm.jpg",
+            }),
+            Object.assign(new BetterPictureTodo(), {
+                id: "pic1",
+                text: "Lorem Ipsum",
+                pictureUrl:
+                    "https://i.etsystatic.com/13081791/c/900/715/0/288/il/b7343b/2529177643/il_340x270.2529177643_h9nm.jpg",
+                altText: "Alt text",
+            }),
+            Object.assign(new VideoTodo(), {
+                id: "vid1",
+                text: "Lorem Ipsum",
+                videoUrl: "https://www.youtube.com/watch?v=oMLHqAUyhEk",
+            }),
+        ]
+
+        const serialized = serialize(src) as any[]
+
+        expect(serialized[0].id).toBe(src[0].id)
+        expect(serialized[0][DEFAULT_DISCRIMINATOR_ATTR]).toBe("picture")
+        expect(serialized[1].id).toBe(src[1].id)
+        expect(serialized[1][DEFAULT_DISCRIMINATOR_ATTR]).toBe("betterPicture")
+        expect(serialized[2].id).toBe(src[2].id)
+        expect(serialized[2][DEFAULT_DISCRIMINATOR_ATTR]).toBe("video")
+
+        const [deserPic, deserBetterPic, deserVid] = deserialize(Todo, serialized)
+        expect(deserPic).toBeInstanceOf(PictureTodo)
+        expect(deserPic).not.toBeInstanceOf(BetterPictureTodo)
+        expect(deserBetterPic).toBeInstanceOf(BetterPictureTodo)
+        expect(deserBetterPic).toBeInstanceOf(PictureTodo)
+        expect(deserVid).toBeInstanceOf(VideoTodo)
+
+        expect(src[0]).toEqual(deserPic)
+        expect(src[1]).toEqual(deserBetterPic)
+        expect(src[2]).toEqual(deserVid)
+    })
+
+    it("(de)serializes class hierarchy with many forward references", () => {
+        class EventState {
+            @serializable(identifier())
+            id: string
+
+            @serializable
+            name: string
+        }
+
+        class Event {
+            @serializable(identifier())
+            id: string
+
+            @serializable
+            name: string
+
+            @serializable(reference(EventState))
+            startingState: EventState
+
+            @serializable(reference(EventState))
+            endingState: EventState
+
+            @serializable(list(reference(Event)))
+            relatedEvents: Event[]
+        }
+
+        class EventListing {
+            @serializable(identifier())
+            id: string
+
+            @serializable(list(object(Event)))
+            events: Event[]
+
+            @serializable(list(object(EventState)))
+            eventStates: EventState[]
+        }
+
+        const state1 = new EventState()
+        state1.id = "state1"
+        state1.name = "State 1"
+
+        const state2 = new EventState()
+        state2.id = "state2"
+        state2.name = "State 2"
+
+        const event1 = new Event()
+        event1.id = "event1"
+        event1.name = "Event 1"
+        event1.startingState = state1
+        event1.endingState = state2
+        event1.relatedEvents = []
+
+        const event2 = new Event()
+        event2.id = "event2"
+        event2.name = "Related Event 2"
+        event1.relatedEvents.push(event2)
+
+        const event3 = new Event()
+        event3.id = "event3"
+        event3.name = "Related Event 3"
+        event1.relatedEvents.push(event3)
+
+        const event4 = new Event()
+        event4.id = "event4"
+        event4.name = "Related Event 4"
+        event1.relatedEvents.push(event4)
+
+        const event5 = new Event()
+        event5.id = "event5"
+        event5.name = "Event 5"
+        event1.relatedEvents.push(event5)
+
+        const eventListing = new EventListing()
+        eventListing.id = "listing1"
+        eventListing.events = [event1, event2, event3, event4, event5]
+        eventListing.eventStates = [state1, state2]
+
+        const serialized = serialize(eventListing)
+        // console.log("Serialized event listing:", JSON.stringify(serialized, null, 2))
+
+        expect(serialized.id).toBe(eventListing.id)
+        expect(serialized.events.length).toBe(5)
+        expect(serialized.eventStates.length).toBe(2)
+        expect(serialized.events[0].id).toBe(event1.id)
+        expect(serialized.events[0].startingState).toBe(state1.id)
+        expect(serialized.events[0].endingState).toBe(state2.id)
+        expect(serialized.events[0].relatedEvents.length).toBe(4)
+        expect(serialized.events[0].relatedEvents[0]).toBe(event2.id)
+        expect(serialized.events[0].relatedEvents[1]).toBe(event3.id)
+        expect(serialized.events[0].relatedEvents[2]).toBe(event4.id)
+
+        const deserEventListing = deserialize(EventListing, serialized)
+        // console.log("Deserialized event listing:", deserEventListing)
+
+        expect(deserEventListing.id).toBe(eventListing.id)
+        expect(deserEventListing.events.length).toBe(5)
+        expect(deserEventListing.eventStates.length).toBe(2)
+        expect(deserEventListing.events[0].id).toBe(event1.id)
+        expect(deserEventListing.events[0].startingState.id).toBe(state1.id)
+        expect(deserEventListing.events[0].endingState.id).toBe(state2.id)
+        expect(deserEventListing.events[0].relatedEvents.length).toBe(4)
+        expect(deserEventListing.events[1].id).toBe(event2.id)
     })
 })

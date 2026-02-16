@@ -472,7 +472,7 @@ describe("Javascript classes", () => {
 
         it("it should not find supertypes", () => {
             expect(() => {
-                deserialize(Store, {
+                foo = deserialize(Store, {
                     boxes: [{ id: 1 }, { id: 2 }],
                     arrows: [{ from: 1, to: 2 }], // to should be Circle, not a Box
                     circles: [{ id: 3 }],
