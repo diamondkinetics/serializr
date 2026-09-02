@@ -61,10 +61,10 @@ function identifyActualSchema(json: any, baseSchema: ModelSchema<any>): ModelSch
                     return subSchema;
                 }
 
-                const subtypeSchema = identifyActualSchema(json, subSchema)
+                const subtypeSchema = identifyActualSchema(json, subSchema);
                 // If we got subSchema back -- ignore it, because we've checked its discriminator already.
                 if (subtypeSchema !== subSchema) {
-                    return subtypeSchema
+                    return subtypeSchema;
                 }
             }
         }

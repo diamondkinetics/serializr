@@ -26,7 +26,7 @@ export function parallel<T, R>(
 ) {
     // TODO: limit parallelization?
     if (ar.length === 0) return void cb(null, []);
-    let left = ar.filter((x) => true).length; // only count items processed by forEach
+    let left = ar.filter(() => true).length; // only count items processed by forEach
     const resultArray: R[] = [];
     let failed = false;
     ar.forEach((value, idx) => {
