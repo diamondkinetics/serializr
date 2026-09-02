@@ -1,0 +1,50 @@
+# DiamondKinetics-only. Upstream's `node.js.yml` triggers on `master`, which
+# this fork no longer has — its default branch is `main` so that
+# `diamondkinetics/versioner` works with its stock `target-branch`. This
+# restores lint/build/test on the fork's own branch.
+#
+# Kept as a separate `dk-`prefixed file rather than editing `node.js.yml`:
+# nothing here can ever conflict with upstream, and branches cut from
+# `mobxjs/master` for upstream PRs don't carry it.
+#
+# Single Node version on purpose — upstream's matrix of five still runs on any
+# pull request opened against upstream, which is where breadth matters.
+#
+# No lint step: `yarn lint` currently exits non-zero on 4 pre-existing errors
+# in deserialize.ts, serialize.ts, createModelSchema.ts and utils.ts, all of
+# which are present on mobxjs/master. Upstream's own CI runs only `yarn test`,
+# which is why they have gone unnoticed. Gating on lint would make this
+# workflow red from its first run; the errors are worth an upstream cleanup
+# PR, and lint can be added here once that lands.
+
+name: dk-quality
+
+on:
+    push:
+        branches: [main]
+        tags-ignore: ['v*']
+    pull_request:
+        branches: [main]
+
+jobs:
+    quality:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+
+            # Dependencies are all public; this fork needs no CodeArtifact
+            # credentials to install, lint, build or test.
+            - name: install
+              run: |
+                  corepack enable
+                  yarn install --immutable
+
+            - name: build
+              run: yarn build
+
+            - name: test
+              run: yarn test
