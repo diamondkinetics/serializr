@@ -1,0 +1,73 @@
+# DiamondKinetics-only. Guards branches destined for mobxjs/serializr.
+#
+# Work meant for upstream must be cut from `mobxjs/master`, never from this
+# fork's `main`, or the pull request drags our package name and our `dk-*`
+# workflows into someone else's review. Convention: name those branches
+# `upstream/**`, and this job fails them if any DK-only content is present.
+#
+# Why this catches the mistake rather than the correct case: a workflow runs
+# from the content of the branch that triggered it. A branch cut from
+# `mobxjs/master` does not contain this file, so this job never runs there —
+# and there is nothing to catch, because that branch has no DK content by
+# construction. A branch cut from `main` DOES contain this file, so the job
+# runs and fails. Its own presence is the symptom it reports.
+
+name: dk-guard-upstream
+
+on:
+    push:
+        branches: ['upstream/**']
+    pull_request:
+        branches: ['upstream/**']
+
+jobs:
+    no-dk-content:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: assert no DiamondKinetics-only content
+              run: |
+                  set -uo pipefail
+                  failed=0
+
+                  # The package identity is the decisive signal: upstream calls
+                  # this package "serializr", we publish it scoped.
+                  name=$(node -p "require('./package.json').name")
+                  if [ "$name" != "serializr" ]; then
+                      echo "::error file=package.json::package.json name is \"$name\", expected \"serializr\" — this branch looks like it was cut from main, not mobxjs/master"
+                      failed=1
+                  fi
+
+                  # Any dk-* workflow. Globbed rather than listed so workflows
+                  # added later are covered without editing this file.
+                  while IFS= read -r path; do
+                      echo "::error file=$path::$path is DiamondKinetics-only and must not reach upstream"
+                      failed=1
+                  done < <(find .github/workflows -name 'dk-*.yml' -o -name 'dk-*.yaml' 2>/dev/null | sort)
+
+                  # DK-only files that do not fit the dk-* workflow pattern.
+                  for path in CONTRIBUTING-DK.md; do
+                      if [ -e "$path" ]; then
+                          echo "::error file=$path::$path is DiamondKinetics-only and must not reach upstream"
+                          failed=1
+                      fi
+                  done
+
+                  if [ "$failed" -ne 0 ]; then
+                      echo ""
+                      echo "This branch carries DiamondKinetics-only content, so a pull request"
+                      echo "from it to mobxjs/serializr would expose our fork's configuration."
+                      echo ""
+                      echo "Re-cut it from upstream and reapply your work:"
+                      echo ""
+                      echo "  git fetch mobxjs"
+                      echo "  git checkout -b upstream/<topic> mobxjs/master"
+                      echo "  git cherry-pick <your commits>"
+                      echo "  yarn install   # the package rename changes yarn's workspace ident"
+                      echo ""
+                      echo "See CONTRIBUTING-DK.md."
+                      exit 1
+                  fi
+
+                  echo "Clean — no DiamondKinetics-only content on this branch."
