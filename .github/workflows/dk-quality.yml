@@ -10,15 +10,17 @@
 # Single Node version on purpose — upstream's matrix of five still runs on any
 # pull request opened against upstream, which is where breadth matters.
 #
-# Two triggers, and no `push` to main. Pull requests run this directly;
-# `dk-version.yml` calls it via `workflow_call` and only bumps the version if
-# it passes. A `push: branches: [main]` trigger here as well would just run
-# the same jobs twice on every merge.
+# Runs on pushes to `main` and on pull requests into it. It briefly exposed a
+# `workflow_call` trigger instead, so `dk-version.yml` could gate a version
+# bump on it; versioning and publishing are done from a maintainer's machine
+# now, so this is back to being triggered directly.
 
 name: dk-quality
 
 on:
-    workflow_call:
+    push:
+        branches: [main]
+        tags-ignore: ['v*']
     pull_request:
         branches: [main]
 
