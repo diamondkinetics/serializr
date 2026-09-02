@@ -1,0 +1,45 @@
+# DiamondKinetics-only. Bumps the version on every merge to `main`, then tags
+# it — and that tag is what `dk-publish.yml` reacts to.
+#
+# `diamondkinetics/versioner` reads and writes the `version` key in
+# package.json, commits, tags `v{VERSION}` and pushes. Increment comes from the
+# merge commit message: nothing means a build bump (3.0.7 -> 3.0.8), `[minor]`
+# gives 3.1.0, `[major]` gives 4.0.0, `[hotfix]` gives 3.0.7.1.
+#
+# `target-branch` is deliberately not set. It defaults to `main`, which is why
+# this fork's default branch was renamed from `master` — the action works
+# unconfigured. If the branch is ever renamed again, this needs an explicit
+# `target-branch`, or the job will run green and silently do nothing.
+#
+# The checkout uses a PAT rather than GITHUB_TOKEN on purpose: pushes made with
+# GITHUB_TOKEN do not trigger further workflows, so the tag would never reach
+# `dk-publish.yml`. Loop protection is the action's own — it declines to
+# increment when the previous commit was already a version bump.
+
+name: dk-version
+
+on:
+    push:
+        branches: [main]
+        tags-ignore: ['v*']
+
+jobs:
+    # Gate the bump on a green tree. Pull requests into `main` already run
+    # this, but a direct push to `main` would not, and a broken version bump
+    # publishes a broken package.
+    quality:
+        uses: ./.github/workflows/dk-quality.yml
+
+    version:
+        needs: quality
+        runs-on: ubuntu-latest
+        steps:
+            - name: checkout
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.VERSIONER_TOKEN }}
+
+            - name: increment version
+              uses: diamondkinetics/versioner@main
+              with:
+                  version-file: package.json
