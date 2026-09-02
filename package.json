@@ -14,7 +14,7 @@
         "prettier": "prettier --write {src,test}/**/*.{ts,js}",
         "clean": "rimraf lib coverage docs",
         "postversion": "git push && git push --tags",
-        "preversion": "yarn build && yarn build-test && yarn test && git diff --exit-code",
+        "preversion": "yarn build && yarn test && git diff --exit-code",
         "watch-docs": "typedoc --watch"
     },
     "nyc": {
