@@ -1,7 +1,7 @@
 import { DEFAULT_DISCRIMINATOR_ATTR } from "../constants";
 import { Clazz, ClazzOrModelSchema, DiscriminatorSpec } from "../serializr";
 import invariant from "../utils/invariant";
-import { getOrCreateSchema } from "../utils/schemas";
+import { getOrCreateOwnSchema, getOrCreateSchema } from "../utils/schemas";
 
 /**
  * Sometimes, when working with schema hierarchies, we may want to deserialize an object to
@@ -116,7 +116,11 @@ export default function subSchema(
     parent?: ClazzOrModelSchema<any>
 ): (clazz: Clazz<any>) => Clazz<any> {
     return (target: Clazz<any>): Clazz<any> => {
-        const childSchema = getOrCreateSchema(target);
+        // Must be the schema `target` itself owns: a subclass declaring no
+        // `@serializable` property of its own inherits its ancestor's static
+        // `serializeInfo`, and writing a discriminator onto that shared object
+        // would make every such sibling collide on the last one registered.
+        const childSchema = getOrCreateOwnSchema(target);
         invariant(
             childSchema?.extends,
             "Can not apply subSchema on a schema not extending another one."
