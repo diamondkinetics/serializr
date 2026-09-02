@@ -5,9 +5,17 @@ import { invariant, isPrimitive } from "../utils/utils";
 
 type Primitive = string | number | boolean | null | undefined | symbol | bigint;
 
+// Any callable or constructable value. Spelled out rather than using
+// `Function`, which is banned because it gives no call-signature safety.
+// Note a bare `(...args: any[]) => any` would NOT be equivalent here: it
+// does not match class constructors, so constructor-valued properties
+// would stop being excluded from `Serialized<T>`. The construct signature
+// keeps the original breadth.
+type AnyFunction = ((...args: any[]) => any) | (new (...args: any[]) => any);
+
 // Helper type to identify keys of properties that are functions
 type FunctionKeys<T> = {
-	[K in keyof T]: T[K] extends Function ? K : never;
+	[K in keyof T]: T[K] extends AnyFunction ? K : never;
 }[keyof T];
 
 // Helper type to recursively serialize object properties, excluding functions
@@ -56,7 +64,7 @@ export default function serialize<T>(...args: [ClazzOrModelSchema<T>, T | T[]] |
     }
 
     if (Array.isArray(value)) {
-        return value.map((item) => (schema ? serialize(schema, item) : serialize(item))) as Serialized<T>[];
+        return value.map((item) => (schema ? serialize(schema, item) : serialize(item)));
     }
 
     if (!schema) {

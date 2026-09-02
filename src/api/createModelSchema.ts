@@ -52,4 +52,3 @@ export default function createModelSchema<T extends object>(
     setDefaultModelSchema(clazz, model);
     return model;
 }
-const x: Clazz<any> = Object;
