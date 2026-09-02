@@ -1,6 +1,6 @@
 {
     "name": "@diamondkinetics/serializr",
-    "version": "3.0.7",
+    "version": "3.0.8",
     "publishConfig": {
         "registry": "https://diamond-kinetics-626803233223.d.codeartifact.us-east-1.amazonaws.com/npm/dk-npm/"
     },
