@@ -865,7 +865,7 @@ describe("@subSchema", () => {
         expect(src[2]).toEqual(deserVid)
     })
 
-    it.skip("(de)serialize class hierarchy with multiple levels - including classes without serializable properties", () => {
+    it("(de)serialize class hierarchy with multiple levels - including classes without serializable properties", () => {
         class Todo {
             @serializable
             id: string
@@ -928,9 +928,148 @@ describe("@subSchema", () => {
         expect(deserBetterPic).toBeInstanceOf(PictureTodo)
         expect(deserVid).toBeInstanceOf(VideoTodo)
 
-        expect(src[0]).toEqual(deserPic)
-        expect(src[1]).toEqual(deserBetterPic)
-        expect(src[2]).toEqual(deserVid)
+        // `pictureUrl` is deliberately NOT `@serializable` — that is precisely
+        // what makes PictureTodo a class "without serializable properties" — so
+        // it cannot survive a round trip. Assert on what actually crosses the
+        // wire; a blanket `toEqual` against the source would be asking the
+        // serializer to carry a field it was never told about.
+        expect((deserPic as PictureTodo).pictureUrl).toBeUndefined()
+        expect(deserPic.id).toBe(src[0].id)
+        expect(deserPic.text).toBe(src[0].text)
+
+        expect((deserBetterPic as BetterPictureTodo).pictureUrl).toBeUndefined()
+        expect(deserBetterPic.id).toBe(src[1].id)
+        expect(deserBetterPic.text).toBe(src[1].text)
+        expect((deserBetterPic as BetterPictureTodo).altText).toBe(
+            (src[1] as BetterPictureTodo).altText
+        )
+
+        // VideoTodo declares all of its properties, so it round-trips whole.
+        expect(deserVid).toEqual(src[2])
+    })
+
+    // ── Subschemas with no serializable properties of their own ───────────────
+    //
+    // A model schema is stored as a static `serializeInfo` on the class, and
+    // statics are inherited through the prototype chain. So a subclass that
+    // declares no `@serializable` property of its own resolves — via
+    // `getDefaultModelSchema` — to its PARENT's schema. `subSchema` then wrote
+    // its discriminator onto that shared object.
+    //
+    // The failure has two shapes, and the second is the dangerous one:
+    //   * If the parent schema has no `extends` of its own, the invariant in
+    //     `subSchema` throws. Loud, and easy to diagnose.
+    //   * If the parent is an intermediate class that does extend something,
+    //     the invariant passes and the discriminator is silently overwritten.
+    //     Sibling subschemas then collide: whichever registered last wins for
+    //     all of them.
+
+    it("(de)serialize a subschema declaring no serializable properties of its own", () => {
+        class Todo {
+            @serializable
+            id: string
+
+            @serializable
+            text: string
+        }
+
+        @subSchema("plain")
+        class PlainTodo extends Todo {}
+
+        const src = Object.assign(new PlainTodo(), { id: "todo1", text: "Lorem Ipsum" })
+        const json = serialize(src) as any
+
+        expect(json[DEFAULT_DISCRIMINATOR_ATTR]).toBe("plain")
+        // Inherited properties must still (de)serialize through the child schema.
+        expect(json.id).toBe("todo1")
+        expect(json.text).toBe("Lorem Ipsum")
+
+        const deser = deserialize(Todo, json)
+        expect(deser).toBeInstanceOf(PlainTodo)
+        expect(deser).toEqual(src)
+    })
+
+    it("keeps sibling subschemas distinct when neither declares its own properties", () => {
+        class Shape {
+            @serializable
+            id: string
+        }
+
+        // An intermediate class WITH its own property. This is what makes the
+        // failure silent instead of loud: its schema has an `extends`, so the
+        // invariant in `subSchema` is satisfied and both siblings below quietly
+        // share this one schema object.
+        class Polygon extends Shape {
+            @serializable
+            sides: number
+        }
+
+        // Registered against the root schema rather than the direct parent —
+        // the documented way to flatten a multi-level hierarchy, and the shape
+        // real callers use.
+        @subSchema("square", Shape)
+        class Square extends Polygon {}
+
+        @subSchema("triangle", Shape)
+        class Triangle extends Polygon {}
+
+        const square = Object.assign(new Square(), { id: "sq1", sides: 4 })
+        const triangle = Object.assign(new Triangle(), { id: "tr1", sides: 3 })
+
+        const squareJson = serialize(square) as any
+        const triangleJson = serialize(triangle) as any
+
+        expect(squareJson[DEFAULT_DISCRIMINATOR_ATTR]).toBe("square")
+        expect(triangleJson[DEFAULT_DISCRIMINATOR_ATTR]).toBe("triangle")
+
+        const deserSquare = deserialize(Shape, squareJson)
+        const deserTriangle = deserialize(Shape, triangleJson)
+
+        expect(deserSquare).toBeInstanceOf(Square)
+        expect(deserSquare).not.toBeInstanceOf(Triangle)
+        expect(deserTriangle).toBeInstanceOf(Triangle)
+        expect(deserTriangle).not.toBeInstanceOf(Square)
+
+        // Properties inherited from both levels survive the round trip.
+        expect(deserSquare).toEqual(square)
+        expect(deserTriangle).toEqual(triangle)
+    })
+
+    it("does not discard the properties of a subschema that has its own", () => {
+        // Regression guard. The fix creates a schema for the child, and
+        // `createModelSchema` DISCARDS whatever schema a class already owns —
+        // so it must only ever run for a class whose resolved schema belongs to
+        // an ancestor. This test passes before the fix too; it exists to keep
+        // that guard honest.
+        class Todo {
+            @serializable
+            id: string
+        }
+
+        @subSchema("picture")
+        class PictureTodo extends Todo {
+            @serializable
+            pictureUrl: string
+        }
+
+        const src = Object.assign(new PictureTodo(), {
+            id: "pic1",
+            pictureUrl: "https://example.com/a.png",
+        })
+        const json = serialize(src) as any
+
+        expect(json[DEFAULT_DISCRIMINATOR_ATTR]).toBe("picture")
+        expect(json.id).toBe("pic1")
+        expect(json.pictureUrl).toBe("https://example.com/a.png")
+        expect(deserialize(Todo, json)).toEqual(src)
+    })
+
+    it("still rejects a subschema whose parent has no schema at all", () => {
+        class Loose {}
+
+        expect(() => subSchema("loose")(class extends Loose {})).toThrow(
+            /Can not apply subSchema on a schema not extending another one/
+        )
     })
 
     it("(de)serializes class hierarchy with many forward references", () => {
