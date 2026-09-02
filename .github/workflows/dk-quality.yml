@@ -1,7 +1,7 @@
 # DiamondKinetics-only. Upstream's `node.js.yml` triggers on `master`, which
 # this fork no longer has — its default branch is `main` so that
 # `diamondkinetics/versioner` works with its stock `target-branch`. This
-# restores lint/build/test on the fork's own branch.
+# provides lint/build/test on the fork's own branch.
 #
 # Kept as a separate `dk-`prefixed file rather than editing `node.js.yml`:
 # nothing here can ever conflict with upstream, and branches cut from
@@ -10,19 +10,15 @@
 # Single Node version on purpose — upstream's matrix of five still runs on any
 # pull request opened against upstream, which is where breadth matters.
 #
-# No lint step: `yarn lint` currently exits non-zero on 4 pre-existing errors
-# in deserialize.ts, serialize.ts, createModelSchema.ts and utils.ts, all of
-# which are present on mobxjs/master. Upstream's own CI runs only `yarn test`,
-# which is why they have gone unnoticed. Gating on lint would make this
-# workflow red from its first run; the errors are worth an upstream cleanup
-# PR, and lint can be added here once that lands.
+# Two triggers, and no `push` to main. Pull requests run this directly;
+# `dk-version.yml` calls it via `workflow_call` and only bumps the version if
+# it passes. A `push: branches: [main]` trigger here as well would just run
+# the same jobs twice on every merge.
 
 name: dk-quality
 
 on:
-    push:
-        branches: [main]
-        tags-ignore: ['v*']
+    workflow_call:
     pull_request:
         branches: [main]
 
@@ -42,6 +38,12 @@ jobs:
               run: |
                   corepack enable
                   yarn install --immutable
+
+            # Enabled once the six inherited eslint problems were fixed (#4,
+            # sent upstream as mobxjs/serializr#197). Before that this exited
+            # non-zero on code the fork had never touched.
+            - name: lint
+              run: yarn lint
 
             - name: build
               run: yarn build

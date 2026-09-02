@@ -1,0 +1,63 @@
+# DiamondKinetics-only. Publishes `@diamondkinetics/serializr` to CodeArtifact
+# when `dk-version.yml` pushes a `v*` tag.
+#
+# Not using `diamondkinetics/package-publisher/.github/workflows/js.yml`: that
+# reusable workflow goes straight from checkout to `npm publish` with no
+# install or build, and this package ships a rolled-up `lib/` that has to exist
+# first. dk-scoring hand-rolls its publish job for the same reason.
+#
+# Credentials come from OIDC, not a stored key. The `github-action-role` trust
+# policy admits `repo:diamondkinetics/*`, so this repo is already covered.
+
+name: dk-publish
+
+on:
+    push:
+        tags: ['v*']
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+
+        # id-token is required to exchange the GitHub OIDC token for AWS creds.
+        permissions:
+            id-token: write
+            contents: read
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+
+            - name: fetch AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  aws-region: us-east-1
+                  role-to-assume: arn:aws:iam::626803233223:role/github-action-role
+
+            - name: install
+              run: |
+                  corepack enable
+                  yarn install --immutable
+
+            # Re-verified here rather than trusted from dk-version's run: this
+            # job builds the artifact that actually ships, so it tests what it
+            # is about to publish.
+            - name: build
+              run: yarn build
+
+            - name: test
+              run: yarn test
+
+            - name: publish to CodeArtifact
+              run: |
+                  # Writes the registry and an auth token into ~/.npmrc. The
+                  # URL matches publishConfig.registry in package.json, so the
+                  # token resolves for the registry npm publishes to.
+                  aws codeartifact login --tool npm --repository dk-npm \
+                      --domain diamond-kinetics --domain-owner 626803233223 \
+                      --region us-east-1
+
+                  npm publish
